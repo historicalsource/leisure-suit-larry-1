@@ -1,0 +1,797 @@
+
+
+                                                                       PAGE   1
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+      1  /* CONVMIDI
+      2  ** Read data in from the Roland MPU-401 midi interface and write it out
+      3  ** as a file compatible with the Quest interpretor.
+      4  */
+      5  
+      6  /* works with 3 options
+      7  1 - only one file in. fit it onto one voice.
+      8  2 - only one file in. Dynamically split it to 3 voices.
+      9  3 - 3 files in. Fit each into only one voice.
+     10  */
+     11  
+     12  #include	"types.h"
+     13  #include	"\include\sys\types.h"
+     14  #include 	"\include\sys\stat.h"
+     15  #include	"fcntl.h"
+     16  
+     17  struct	FileInfo
+     18  {
+     19  	unsigned	char	*bp;
+     20  	int	size;
+     21  }	f;
+     22  
+     23  struct	Note
+     24  {
+     25  	int	length;
+     26  	int	freq;
+     27  	int	atten;
+     28  	int	OldPitch;
+     29  	int	NoteInProgress;
+     30  	int	FirstTime;
+     31  	int	size, osize;
+     32  	unsigned	char	*buffer, *bp, *obuffer;
+     33  	int	voice;
+     34  	int	AccountedFor;
+     35  }	N[3];
+     36  
+     37  
+     38  void		Convert();
+     39  void		HandleByte();
+     40  void		PutNote();
+     41  void		NoteOff();
+     42  void		NoteOn();
+     43  void		TerminateRest();
+     44  struct	FileInfo		ReadFile();
+     45  void		GetOutBuffs();
+     46  void		FreeBuffs();
+     47  void		FlushBuffs();			/* writes output buffers */
+     48  void		ProcessInput();
+     49  
+     50  int	od;
+     51  int	i, j;
+     52  int	FilesIn;					/* recording from one file or 3 */
+     53  int	VoiceMode;				/* split overlaps to seperate voices */
+     54  int	OverallTime;
+
+
+                                                                       PAGE   2
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+     55  int	ignoreNextNote;
+     56  int	throwAway;
+     57  int	debugging;
+     58  
+     59  #define	BUFFERSIZE	0x1000
+     60  #define	SINGLE		0
+     61  #define	MULTIPLE		1
+     62  #define	MONO			0
+     63  #define	POLY			1
+     64  
+     65  TEXT		progName[] = "convmidi";
+     66  
+     67  int		chan[] = 		{0x8000, 0xa000, 0xc000};
+     68  unsigned	char		at[] = 		{0x90, 0xb0, 0xd0};
+     69  
+     70  COUNT	frequency[108];
+     71  
+     72  /* = {
+     73  					0x174,
+     74  					0x271,
+     75  					0x66e,
+     76  					0xc6b,
+     77  					0x569,
+     78  					0x67,
+     79  					0xd64,
+     80  					0xc62,
+     81  					0xd60,
+     82  					0xf5e,
+     83  					0x35d,
+     84  					0x95b,
+     85  					0x5a,
+     86  					0x958,
+     87  					0x357,
+     88  					0xe55,
+     89  					0xa54,
+     90  					0x853,
+     91  					0x652,
+     92  					0x651,
+     93  					0x650,
+     94  					0x74f,
+     95  					0x94e,
+     96  					0xc4d,
+     97  					0x4d,
+     98  					0x44c,
+     99  					0x94b,
+    100  					0xf4a,
+    101  					0x54a,
+    102  					0xc49,
+    103  					0x349,
+    104  					0xb48,
+    105  					0x348,
+    106  					0xb47,
+    107  					0x447,
+    108  					0xe46,
+
+
+                                                                       PAGE   3
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    109  					0x846,
+    110  					0x246,
+    111  					0xc45,
+    112  					0x745,
+    113  					0x245,
+    114  					0xe44,
+    115  					0x944,
+    116  					0x544,
+    117  					0x144,
+    118  					0xd43,
+    119  					0xa43,
+    120  					0x743,
+    121  					0x443,
+    122  					0x143,
+    123  					0xe42,
+    124  					0xb42,
+    125  					0x942,
+    126  					0x742,
+    127  					0x442,
+    128  					0x242,
+    129  					0x42,
+    130  					0xe41,
+    131  					0xd41,
+    132  					0xb41};
+    133  
+    134  
+    135  */
+    136  
+    137  extern	STRPTR	malloc();
+    138  STRPTR	buffer, bp, TopOfBuffer, work;
+    139  
+    140  main(argc, argv)
+    141  COUNT	argc;
+    142  STRPTR	argv[];
+    143  {
+    144  	int	fdat;
+    145  	unsigned	int	work, work2, work3;
+    146  	throwAway = FALSE;
+    147  	ignoreNextNote = 0;
+    148  	if (argc != 3 && argc != 4) {
+    149  		printf("use: %s filename mode 1=mono, single 2=mono, multiple 3=poly, multiple\n",
+    150  			 progName);
+    151  		exit(10);
+    152  		}
+    153  
+    154  	if (argc == 4) {
+    155  		debugging = TRUE;
+    156  		}
+    157  	else {
+    158  		debugging = FALSE;
+    159  		}
+    160  
+    161  	if (*argv[2] == '1') {
+    162  		FilesIn = SINGLE;
+
+
+                                                                       PAGE   4
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    163  		VoiceMode = MONO;
+    164  		}
+    165  	else {
+    166  		if (*argv[2] == '2') {
+    167  			FilesIn = SINGLE;
+    168  			VoiceMode = POLY;
+    169  			}
+    170  		else {
+    171  			if (*argv[2] == '3') {
+    172  				FilesIn = MULTIPLE;
+    173  				VoiceMode = MONO;
+    174  				}
+    175  			else {
+    176  				printf("Invalid Mode\n");
+    177  				exit(10);
+    178  				}
+    179  			}
+    180  		}
+    181  
+    182  	fdat = open("freq.dat",O_BINARY | O_RDWR);	/*	read frequency table	*/
+    183  	read(fdat, &frequency[0], 108*2);
+    184  	for (i=0; i<108; i++) {
+    185  		work = frequency[i];
+    186  		work2 = frequency[i];
+    187  		work3 = frequency[i];
+    188  		work &= 0x0f00;
+    189  		work >>= 4;
+    190  		work2 &= 0x00f0;
+    191  		work2 >>= 4;
+    192  		work3 &= 0x000f;
+    193  		work3 <<= 8;
+    194  		frequency[i] = work | work2 | work3;
+    195  		}
+    196  	close(fdat);
+    197  
+    198  	f = ReadFile(argv[1], '1');
+    199  	N[0].buffer = f.bp;
+    200  	N[0].size = f.size;
+    201  	if (FilesIn == MULTIPLE) {
+    202  		f = ReadFile(argv[1], '2');
+    203  		N[1].buffer = f.bp;
+    204  		N[1].size = f.size;
+    205  		f = ReadFile(argv[1], '3');
+    206  		N[2].buffer = f.bp;
+    207  		N[2].size = f.size;
+    208  		}
+    209  
+    210  	GetOutBuffs();
+    211  	Convert();
+    212  	FlushBuffs();
+    213  	FreeBuffs();
+    214  }
+
+main  Local Symbols
+
+
+                                                                       PAGE   5
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+
+Name                            Class    Offset    Register
+
+fdat. . . . . . . . . . . . . . auto      -0008    
+work3 . . . . . . . . . . . . . auto      -0006    
+work2 . . . . . . . . . . . . . auto      -0004    
+work. . . . . . . . . . . . . . auto      -0002    
+argc. . . . . . . . . . . . . . param      0004    
+argv. . . . . . . . . . . . . . param      0006    
+
+    215  
+    216  void
+    217  Convert()
+    218  {
+    219  	struct	Note	*ptr;
+    220  	N[0].voice = 0;
+    221  	N[1].voice = 1;
+    222  	N[2].voice = 2;
+    223  	ptr = &N[0];
+    224  	ProcessInput(ptr);
+    225  	if (FilesIn == MULTIPLE) {
+    226  		ptr = &N[1];
+    227  		ProcessInput(ptr);
+    228  		ptr = &N[2];
+    229  		ProcessInput(ptr);
+    230  		}
+    231  }
+
+Convert  Local Symbols
+
+Name                            Class    Offset    Register
+
+ptr . . . . . . . . . . . . . . auto      -0002    
+
+    232  
+    233  void
+    234  ProcessInput(ptr)
+    235  struct	Note	*ptr;
+    236  {
+    237  	unsigned	char	byte;
+    238  	ptr->bp = ptr->buffer;
+    239  	ptr->FirstTime = TRUE;
+    240  	ptr->NoteInProgress = FALSE;
+    241  	while (ptr->bp < (ptr->buffer+ptr->size))  {
+    242  		byte = *ptr->bp;
+    243  		HandleByte(byte, ptr);
+    244  		}
+    245  }
+
+ProcessInput  Local Symbols
+
+Name                            Class    Offset    Register
+
+byte. . . . . . . . . . . . . . auto      -0002    
+
+
+                                                                       PAGE   6
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+ptr . . . . . . . . . . . . . . param      0004    
+
+    246  
+    247  void
+    248  HandleByte(byte, ptr)
+    249  unsigned	char	byte;
+    250  struct	Note	*ptr;
+    251  {
+    252  	int	delay, pitch, type;
+    253  	if (debugging)
+    254  		printf("prior to 0x%x time was 0x%x\n", byte, OverallTime);
+    255  	byte &= 0xff;
+    256  	if (byte == 0xf8) {
+    257  		OverallTime += 240;
+    258  		ptr->bp++;
+    259  		return;
+    260  		}
+    261  
+    262  	delay = byte;
+    263  	++ptr->bp;
+    264  	pitch = *ptr->bp;
+    265  	++ptr->bp;
+    266  	type = *ptr->bp;
+    267  	++ptr->bp;
+    268  
+    269  	OverallTime += delay;
+    270  	if (0xc0 != (0xc0 & pitch))
+    271  		if (ptr->NoteInProgress == TRUE && pitch == ptr->OldPitch) {
+    272  			NoteOff(pitch, type, ptr);
+    273  			}
+    274  		else {
+    275  			NoteOn(pitch, type, ptr);
+    276  			}
+    277  
+    278  }
+
+HandleByte  Local Symbols
+
+Name                            Class    Offset    Register
+
+delay . . . . . . . . . . . . . auto      -0006    
+type. . . . . . . . . . . . . . auto      -0004    
+pitch . . . . . . . . . . . . . auto      -0002    
+byte. . . . . . . . . . . . . . param      0004    
+ptr . . . . . . . . . . . . . . param      0006    
+
+    279  
+    280  void
+    281  NoteOn(pitch, type, ptr)
+    282  int	pitch;
+    283  int	type;	/* really how hard the key was struck */
+    284  struct	Note	*ptr;
+    285  {
+    286  	struct	Note	*wp;
+
+
+                                                                       PAGE   7
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    287  	int	NoteBounced;
+    288  	NoteBounced = FALSE;
+    289  	if (ptr->NoteInProgress == TRUE) {	/* are we in the middle of a note */
+    290  		if (VoiceMode == POLY) {			/* can we bounce the note */
+    291  			if (ptr->voice == 2) {		/* can't at last voice */
+    292   				NoteOff(pitch, type, ptr);
+    293  				}
+    294  			else {
+    295  				wp = &N[ptr->voice+1];
+    296  				if (debugging)
+    297  					printf("recursing\n");
+    298  				NoteOn(pitch, type, wp);
+    299  				NoteBounced = TRUE;
+    300  									/* call note on with next voice */
+    301  				}
+    302  			}
+    303  		else {
+    304  			if (debugging)
+    305  				printf("ignoreNextNote 0x%x pitch 0x%x\n", ignoreNextNote, pitch);
+    306  			if (ptr->OldPitch != ignoreNextNote) {
+    307  				if (debugging)
+    308  					printf("Overlap!!!\n");
+    309  				ignoreNextNote = pitch;
+    310  				NoteOff(pitch, type, ptr);
+    311  								/* terminate prior note */
+    312  				}
+    313  			else {
+    314  				ignoreNextNote = 0;
+    315  				throwAway = TRUE;
+    316  				}
+    317  			}
+    318  		}
+    319  	else {
+    320  		TerminateRest(ptr);
+    321  								/* Terminate any Rest in progress */
+    322  		}
+    323  
+    324  	if (NoteBounced == FALSE && throwAway != TRUE) {
+    325  		if (debugging)
+    326  			printf("NoteOn = 0x%x 0x%x \n", ptr->voice, pitch);
+    327  		/* if (pitch < 12) {
+    328  			printf("too low!!!!!");
+    329  			}
+    330  		if (pitch > 96) {
+    331  			printf("too high!!!!");
+    332  			} */
+    333  		ptr->freq = frequency[pitch];	
+    334  		ptr->OldPitch = pitch;
+    335  		ptr->freq |= chan[ptr->voice];
+    336  		type >>= 3;
+    337  		type = 0xf - type;			/* make 0-15 be 15-0 */
+    338  		if (ptr->voice == 1) {
+    339  			type = 2;		
+    340  			}
+
+
+                                                                       PAGE   8
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    341  		else {
+    342  			if (ptr->voice == 2) {
+    343  				type = 4;
+    344  				}
+    345  			else {
+    346  				type = 0;
+    347  				}
+    348  			}
+    349  		ptr->atten = at[ptr->voice] | type;
+    350  		ptr->NoteInProgress = TRUE;
+    351  		}
+    352  	throwAway = FALSE;
+    353  }
+
+NoteOn  Local Symbols
+
+Name                            Class    Offset    Register
+
+NoteBounced . . . . . . . . . . auto      -0004    
+wp. . . . . . . . . . . . . . . auto      -0002    
+pitch . . . . . . . . . . . . . param      0004    
+type. . . . . . . . . . . . . . param      0006    
+ptr . . . . . . . . . . . . . . param      0008    
+
+    354  
+    355  void
+    356  NoteOff(pitch, type, ptr)
+    357  int	pitch, type;
+    358  struct	Note	*ptr;
+    359  {
+    360  	struct	Note	*wp;
+    361  
+    362  	if (VoiceMode == POLY 
+    363  	&& ptr->voice != 2 
+    364  	&& (pitch != ptr->OldPitch)) {			/* turning off another voice */
+    365  		wp = &N[ptr->voice+1];
+    366  		if (debugging)
+    367  			printf("recursing to NoteOff\n");
+    368  		NoteOff(pitch, wp);
+    369  		}
+    370  	else {
+    371  		if (debugging)
+    372  			printf("NoteOff = 0x%x 0x%x \n", ptr->voice, ptr->OldPitch);
+    373  		if (FilesIn == MULTIPLE && ptr->FirstTime == TRUE) {
+    374  			ptr->FirstTime = FALSE;
+    375  			ptr->NoteInProgress = FALSE;
+    376  			OverallTime = 0;
+    377  			return;	/* flush the first note */
+    378  			}
+    379  
+    380  /*			if (pitch != ptr->OldPitch)
+    381  			return;
+    382  */
+    383  
+
+
+                                                                       PAGE   9
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    384  		if (debugging)
+    385  			printf("NOteOff overall 0x%x accounted 0x%x\n", OverallTime, ptr->AccountedFor);
+    386  		ptr->length = OverallTime - ptr->AccountedFor;
+    387  		ptr->AccountedFor = OverallTime;
+    388  		if (debugging)
+    389  			printf("ending a note of length 0x%x\n", ptr->length);
+    390  		if (ptr->length != 0) {	/* no zero length notes */
+    391  			PutNote(ptr);
+    392  			}
+    393  		ptr->NoteInProgress = FALSE;
+    394  		ptr->OldPitch = 0;			/* show note over */
+    395  		ptr->length = 0;
+    396  		}
+    397  
+    398  }		
+
+NoteOff  Local Symbols
+
+Name                            Class    Offset    Register
+
+wp. . . . . . . . . . . . . . . auto      -0002    
+pitch . . . . . . . . . . . . . param      0004    
+type. . . . . . . . . . . . . . param      0006    
+ptr . . . . . . . . . . . . . . param      0008    
+
+    399  
+    400  void
+    401  TerminateRest(ptr)
+    402  struct	Note	*ptr;
+    403  {
+    404  	if (ptr->FirstTime == TRUE) {
+    405  		if (FilesIn == SINGLE) {
+    406  			ptr->FirstTime = FALSE;	/* don't skip first note */
+    407  			if (ptr->voice == 0)
+    408  				OverallTime = 0;
+    409  			}
+    410  		else 
+    411  			OverallTime = 0;
+    412  		return;	/* flush the first rest */
+    413  		}
+    414  	if (debugging)
+    415  		printf("Rest = 0x%x \n", ptr->voice);
+    416  	ptr->length = OverallTime - ptr->AccountedFor;
+    417  	ptr->AccountedFor = OverallTime;
+    418  	ptr->freq = 0 | chan[ptr->voice];
+    419  	ptr->atten = 0x0f | at[ptr->voice];
+    420  	if (ptr->length != 0) 
+    421  		PutNote(ptr);
+    422  }
+
+TerminateRest  Local Symbols
+
+Name                            Class    Offset    Register
+
+
+
+                                                                       PAGE  10
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+ptr . . . . . . . . . . . . . . param      0004    
+
+    423  
+    424  void
+    425  PutNote(ptr)
+    426  struct	Note	*ptr;
+    427  {
+    428  	int	i;
+    429  	unsigned	char	*bp, *np;
+    430  	if ((ptr->atten & 0x0f) == 0x0f) 
+    431  		if (debugging)
+    432  			printf("rest 0x%x 0x%x\n", ptr->voice, ptr->length);
+    433  	else 
+    434  		if (debugging)
+    435  			printf("note 0x%x 0x%x 0x%x\n", ptr->voice, ptr->OldPitch, ptr->length);
+    436  
+    437  
+    438  	bp = ptr->obuffer;
+    439  	bp += ptr->osize;
+    440  	np = ptr;
+***** convmidi.C(440) : warning 49: '=' : indirection to different types
+    441  	for(i = 0; i < 5; i++) {
+    442  		*(bp++) = *(np++);
+    443  		}
+    444  	ptr->osize += 5;
+    445  }
+
+PutNote  Local Symbols
+
+Name                            Class    Offset    Register
+
+i . . . . . . . . . . . . . . . auto      -0006    
+np. . . . . . . . . . . . . . . auto      -0004    
+bp. . . . . . . . . . . . . . . auto      -0002    
+ptr . . . . . . . . . . . . . . param      0004    
+
+    446  
+    447  struct	
+    448  FileInfo	ReadFile(fn, suffix)
+    449  unsigned	char	suffix;
+    450  unsigned	char	fn[];
+    451  {
+    452  	struct	FileInfo	f;
+    453  	unsigned	char		work[32];
+    454  	unsigned	char	*bp, *buffer, *wp;
+    455  	int	descriptor;
+    456  	strcpy(work, fn);
+    457  	if (FilesIn == MULTIPLE) {
+    458  		wp = &work[0];
+    459  		while (*wp != 0x00) 
+    460  			wp++;
+    461  		*wp++ = '.';
+    462  		*wp++ = suffix;
+    463  		*wp = 0x00;
+
+
+                                                                       PAGE  11
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    464  		}
+    465  
+    466  	if ((descriptor = open(work,O_BINARY | O_RDWR)) < 0) {
+    467  		printf("%s: can't open %s\n", progName, work);
+    468  		exit(10);
+    469  		}
+    470  
+    471  	if ((buffer = malloc(BUFFERSIZE)) == NULL) {
+    472  		printf("%s: not enough memory\n", progName);
+    473  		exit(10);
+    474  		}
+    475  	bp = buffer;
+    476  	while(read(descriptor, bp++, 1) > 0) 
+    477  		;
+    478  	--bp;
+    479  	if (debugging)
+    480  		printf("read %d bytes\n", bp - buffer);
+    481  	f.size = bp - buffer;
+    482  	f.bp = buffer;
+    483  	close(descriptor);
+    484  	return(f);
+    485  }
+
+ReadFile  Local Symbols
+
+Name                            Class    Offset    Register
+
+descriptor. . . . . . . . . . . auto      -002c    
+buffer. . . . . . . . . . . . . auto      -002a    
+f . . . . . . . . . . . . . . . auto      -0028    
+bp. . . . . . . . . . . . . . . auto      -0024    
+work. . . . . . . . . . . . . . auto      -0022    
+wp. . . . . . . . . . . . . . . auto      -0002    
+fn. . . . . . . . . . . . . . . param      0004    
+suffix. . . . . . . . . . . . . param      0006    
+
+    486   
+    487  void
+    488  GetOutBuffs()
+    489  {
+    490  	N[0].obuffer = malloc(BUFFERSIZE);
+    491  	N[1].obuffer = malloc(BUFFERSIZE);
+    492  	N[2].obuffer = malloc(BUFFERSIZE);
+    493  
+    494  }
+
+    495  
+    496  
+    497  void
+    498  FreeBuffs()
+    499  {		
+    500  	free(N[0].obuffer);
+    501  	free(N[1].obuffer);
+    502  	free(N[2].obuffer);
+
+
+                                                                       PAGE  12
+                                                                       05-26-87
+                                                                       22:02:13
+
+  Line#  Source Line                          Microsoft C Compiler Version 4.00
+
+    503  }
+
+    504  
+    505  void
+    506  FlushBuffs()
+    507  {
+    508  	/* writes all three output buffers */
+    509  
+    510  	struct {
+    511  		int	PtrChan1;
+    512  		int	PtrChan2;
+    513  		int	PtrChan3;
+    514  		int	PtrChan4;
+    515  		} 		Ptrs;
+    516  
+    517  	Ptrs.PtrChan1 = 8;
+    518  	Ptrs.PtrChan2 = Ptrs.PtrChan1 + N[0].osize + 2;
+    519  	Ptrs.PtrChan3 = Ptrs.PtrChan2 + N[1].osize + 2;
+    520  	Ptrs.PtrChan4 = Ptrs.PtrChan3 + N[2].osize + 2;
+    521  	od = open("output", O_BINARY | O_CREAT | O_RDWR | O_TRUNC, S_IREAD | S_IWRITE);
+    522  	write(od, &Ptrs, 8);
+    523  
+    524  	for(i=0; i <3; i++) {
+    525  		write(od, N[i].obuffer, N[i].osize);
+    526  		j = 0xffff;
+    527  		write(od, &j, 2);
+    528  		}
+    529  	j = 0xffff;
+    530  	write(od, &j, 2);
+    531  
+    532  	close(od);
+    533  }
+
+FlushBuffs  Local Symbols
+
+Name                            Class    Offset    Register
+
+Ptrs. . . . . . . . . . . . . . auto      -0008    
+
+    534  
+    535  
+
+
+
+Global Symbols
+
+Name                            Type             Size    Class    Offset
+
+Convert . . . . . . . . . . . . near function     ***    global     01e9
+FilesIn . . . . . . . . . . . . int                 2    common      ***
+FlushBuffs. . . . . . . . . . . near function     ***    global     0934
+FreeBuffs . . . . . . . . . . . near function     ***    global     0905
+GetOutBuffs . . . . . . . . . . near function     ***    global     08cd
+HandleByte. . . . . . . . . . . near function     ***    global     02a1
+
+
+                                                                       PAGE  13
+                                                                       05-26-87
+                                                                       22:02:13
+
+                                              Microsoft C Compiler Version 4.00
+
+
+Global Symbols
+
+Name                            Type             Size    Class    Offset
+
+N . . . . . . . . . . . . . . . struct/array       78    common      ***
+NoteOff . . . . . . . . . . . . near function     ***    global     0517
+NoteOn. . . . . . . . . . . . . near function     ***    global     036e
+OverallTime . . . . . . . . . . int                 2    common      ***
+ProcessInput. . . . . . . . . . near function     ***    global     0240
+PutNote . . . . . . . . . . . . near function     ***    global     06ff
+ReadFile. . . . . . . . . . . . near function     ***    global     07af
+TerminateRest . . . . . . . . . near function     ***    global     0646
+TopOfBuffer . . . . . . . . . . near pointer        2    common      ***
+VoiceMode . . . . . . . . . . . int                 2    common      ***
+at. . . . . . . . . . . . . . . struct/array        3    global     0070
+bp. . . . . . . . . . . . . . . near pointer        2    common      ***
+buffer. . . . . . . . . . . . . near pointer        2    common      ***
+chan. . . . . . . . . . . . . . struct/array        6    global     006a
+close . . . . . . . . . . . . . near function     ***    extern      ***
+debugging . . . . . . . . . . . int                 2    common      ***
+exit. . . . . . . . . . . . . . near function     ***    extern      ***
+f . . . . . . . . . . . . . . . struct/array        4    common      ***
+free. . . . . . . . . . . . . . near function     ***    extern      ***
+frequency . . . . . . . . . . . struct/array      216    common      ***
+i . . . . . . . . . . . . . . . int                 2    common      ***
+ignoreNextNote. . . . . . . . . int                 2    common      ***
+j . . . . . . . . . . . . . . . int                 2    common      ***
+main. . . . . . . . . . . . . . near function     ***    global     0000
+malloc. . . . . . . . . . . . . near function     ***    extern      ***
+od. . . . . . . . . . . . . . . int                 2    common      ***
+open. . . . . . . . . . . . . . near function     ***    extern      ***
+printf. . . . . . . . . . . . . near function     ***    extern      ***
+progName. . . . . . . . . . . . struct/array        9    global     0060
+read. . . . . . . . . . . . . . near function     ***    extern      ***
+strcpy. . . . . . . . . . . . . near function     ***    extern      ***
+throwAway . . . . . . . . . . . int                 2    common      ***
+work. . . . . . . . . . . . . . near pointer        2    common      ***
+write . . . . . . . . . . . . . near function     ***    extern      ***
+
+Code size = 0a13 (2579)
+Data size = 01be (446)
+Bss size  = 0000 (0)
+
+No errors detected

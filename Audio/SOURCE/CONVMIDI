@@ -1,0 +1,7 @@
+convmidi.obj:	convmidi.c
+	msc	convmidi,,convmidi /Zi /Od;
+
+convmidi.exe:	convmidi.obj
+	link	convmidi /co;
+
+

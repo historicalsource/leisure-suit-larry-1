@@ -1,0 +1,36 @@
+
+
+ Start  Stop   Length Name                   Class
+ 00000H 018BEH 018BFH _TEXT                  CODE
+ 018BFH 018BFH 00000H C_ETEXT                ENDCODE
+ 018C0H 018F5H 00036H NULL                   BEGDATA
+ 01900H 01BC5H 002C6H _DATA                  DATA
+ 01BC6H 01BD3H 0000EH CDATA                  DATA
+ 01BD4H 01BD4H 00000H XIB                    DATA
+ 01BD4H 01BD4H 00000H XI                     DATA
+ 01BD4H 01BD4H 00000H XIE                    DATA
+ 01BD4H 01BD4H 00000H XPB                    DATA
+ 01BD4H 01BD5H 00002H XP                     DATA
+ 01BD6H 01BD6H 00000H XPE                    DATA
+ 01BD6H 01BD6H 00000H XCB                    DATA
+ 01BD6H 01BD6H 00000H XC                     DATA
+ 01BD6H 01BD6H 00000H XCE                    DATA
+ 01BD6H 01BD6H 00000H CONST                  CONST
+ 01BD6H 01BDDH 00008H HDR                    MSG
+ 01BDEH 01CDAH 000FDH MSG                    MSG
+ 01CDBH 01CDCH 00002H PAD                    MSG
+ 01CDDH 01CDDH 00001H EPAD                   MSG
+ 01CDEH 01D03H 00026H _BSS                   BSS
+ 01D04H 01D04H 00000H XOB                    BSS
+ 01D04H 01D04H 00000H XO                     BSS
+ 01D04H 01D04H 00000H XOE                    BSS
+ 01D10H 02119H 0040AH c_common               BSS
+ 02120H 0291FH 00800H STACK                  STACK
+ 02920H 02C3EH 0031FH $$TYPES                DEBTYP
+ 02C3FH 02D27H 000E9H $$SYMBOLS              DEBSYM
+ 02D30H 02D30H 00000H  SRCLINES              DEBSRC
+
+ Origin   Group
+ 018C:0   DGROUP
+
+Program entry point at 0000:03AE

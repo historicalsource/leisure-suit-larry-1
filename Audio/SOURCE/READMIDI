@@ -1,0 +1,11 @@
+readmidi.obj:	readmidi.c
+	msc	readmidi /Zi /Od;
+
+midi_int.obj:	midi_int.s
+	ap86 midi_int.s midi_int.tmp
+	masm	midi_int.tmp;
+
+readmidi.exe:	readmidi.obj midi_int.obj
+	link	readmidi+midi_int,readmidi,, /co;
+
+

@@ -1,0 +1,90 @@
+[
+[	VIEWS.TXT
+[
+[	LEISURE-SUIT LARRY IN THE LAND OF THE LOUNGE LIZARDS SHOW.OBJ VIEW TEXT
+[
+[	Thursday, May 21, 1987 at 10:50 a.m.
+[
+
+
+
+%viewtext	101
+"Your wallet contains some wrinkled business cards, lots of notes,
+ some credit cards (which won't work in this game),
+ and $%v90.00 in cash."
+
+%viewtext	102
+"Yep. It's your breath spray."
+
+%viewtext	103
+"Why is this stuff in every adventure game?"
+
+%viewtext	104
+"Gee, a genuine BowlX!\n\n
+At least the time is accurate -- it's %v119:%v116|2."
+
+%viewtext	105
+"This Red Delicious is not suitable for your Granny Smith, but someone
+ else might find it appropriate."
+
+%viewtext	106
+"When you gaze deep into the diamond,
+ you seem to hear the sound of wedding bells, and maybe diesel trucks."
+
+%viewtext	107
+"There is a strong odor of petroleum by-products coming from this glass."
+
+%viewtext	108
+"Operating on the principle of line-of-sight infrared trans- mission,
+ the remote control baffles you completely.\n\n
+Although it appears to do nothing,
+ aiming it at your groin while rapidly changing channels
+ does make you feel quite silly."
+
+%viewtext	109
+"A rose, is a rose, is a rose."
+
+%viewtext	110
+"These are more fun to use than to look at!"
+
+%viewtext	111
+"Ask all you want to, you're NOT gonna see that mess!"
+
+%viewtext	112
+"Candy makes the perfect present."
+
+%viewtext	113
+"Your mind reels with the possibilities!"
+
+%viewtext	114
+"The passcard reads:\n\n
+   \"Lost Wages Disco\n\n
+Admit One Member and Guest\n\n
+Remember: every Monday is Ladies Night!\""
+
+%viewtext	115
+"5 blades, 7 attachments, 3 screwdrivers, 2 saws,
+ a toothpick, a tweezer, plus MORE... much, MUCH more!!"
+
+%viewtext	116
+"You seriously question this wine's heritage."
+
+%viewtext	117
+"Let's see now...
+ Here's an article about how professional window washers
+ secure themselves to buildings with a rope around their waist... Nah!\n\n
+You flip through the pages until you discover...
+ Mmmm, nice centerfold!!"
+
+%viewtext	118
+"Even though you only scored in the 28th percentile in your high school's
+ National Mechanical Aptitude Test,
+ you're fairly certain this is a hammer."
+
+%viewtext	119
+"Even though a portion of the label is missing,
+ you can still make out the letters \"nish\" and \"Fl.\""
+
+%viewtext	120
+"A rope, is a rope, is a rope."
+
